@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - task: pusht_lowdim
+  - task: can_lowdim
 
 name: train_diffusion_unet_lowdim
 _target_: diffusion_policy.workspace.train_diffusion_unet_lowdim_workspace.TrainDiffusionUnetLowdimWorkspace
@@ -20,13 +20,17 @@ keypoint_visible_rate: 1.0
 obs_as_local_cond: False
 obs_as_global_cond: True
 pred_action_steps_only: False
+base_input_dim: "${eval:'${task.action_dim} if ${obs_as_local_cond} or ${obs_as_global_cond} else ${task.obs_dim} + ${task.action_dim}'}"
 
 policy:
   _target_: diffusion_policy.policy.diffusion_unet_lowdim_policy.DiffusionUnetLowdimPolicy
 
+  use_self_condition: False
+
   model:
     _target_: diffusion_policy.model.diffusion.conditional_unet1d.ConditionalUnet1D
-    input_dim: "${eval: ${task.action_dim} if ${obs_as_local_cond} or ${obs_as_global_cond} else ${task.obs_dim} + ${task.action_dim}}"
+    input_dim: "${eval:'${base_input_dim} * (2 if ${policy.use_self_condition} else 1)'}"
+    output_dim: ${base_input_dim}
     local_cond_dim: "${eval: ${task.obs_dim} if ${obs_as_local_cond} else None}"
     global_cond_dim: "${eval: ${task.obs_dim}*${n_obs_steps} if ${obs_as_global_cond} else None}"
     diffusion_step_embed_dim: 256

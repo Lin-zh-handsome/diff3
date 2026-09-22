@@ -1,0 +1,30 @@
+common:
+  task: can_lowdim
+  dataset_path: data/robomimic/datasets/can/ph/low_dim.hdf5
+  seed: null
+  training_epochs: null
+  batch_size: null
+  scheduler: preserve_existing
+  data_processing: preserve_existing
+
+variants:
+  original_dp:
+    use_self_condition: false
+    use_feedback_gate: false
+    use_feedback_perturb: false
+  sc_only:
+    use_self_condition: true
+    use_feedback_gate: false
+    use_feedback_perturb: false
+  sc_gate:
+    use_self_condition: true
+    use_feedback_gate: true
+    use_feedback_perturb: false
+  sc_perturb:
+    use_self_condition: true
+    use_feedback_gate: false
+    use_feedback_perturb: true
+  workpoint1_full:
+    use_self_condition: true
+    use_feedback_gate: true
+    use_feedback_perturb: true
