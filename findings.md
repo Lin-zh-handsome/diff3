@@ -49,6 +49,11 @@
 - The default low-dimensional training configuration now targets `can_lowdim`; with SC disabled it resolves to input/output `7/7`, and with SC enabled it resolves to `14/7`.
 - Direct SC check on GPU with Can-shaped synthetic tensors: finite loss; feedback `[1,16,7]`; `feedback_requires_grad=False`; finite predicted chunk `[1,16,7]`; executed slice `[1,8,7]`. This verifies the Phase 1 data path, not benchmark effectiveness.
 
+## Analog Bits training update
+
+- SC training now uses one random timestep per batch and samples a 50% batch-level branch: either a no-gradient zero-feedback pre-forward followed by detached clean-action feedback, or zero feedback directly. Both branches perform the same final gradient-bearing epsilon-prediction loss.
+- Inference self-conditioning, scheduler behavior, clean-estimate recovery, and feedback construction are unchanged.
+
 ## Next benchmark experiment
 
 - First effectiveness comparison: RoboMimic Can low-dimensional (`ph` demonstrations), `original_dp` versus `sc_only`, using identical seed, data split, horizons, scheduler, optimizer, and training budget. Report closed-loop success rate and reward from the existing RoboMimic runner.

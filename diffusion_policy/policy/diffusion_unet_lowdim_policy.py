@@ -268,17 +268,18 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
 
         # apply conditioning
         noisy_trajectory[condition_mask] = trajectory[condition_mask]
-        
+
         if self.use_self_condition:
-            with torch.no_grad():
-                zero_feedback = torch.zeros_like(noisy_trajectory)
-                pre_pred = self.model(
-                    torch.cat([noisy_trajectory, zero_feedback], dim=-1),
-                    timesteps, local_cond=local_cond, global_cond=global_cond)
-                clean_sample = self._predict_clean_sample(
-                    noisy_trajectory, pre_pred, timesteps)
-                feedback = self._feedback_from_clean_sample(
-                    clean_sample, noisy_trajectory)
+            feedback = torch.zeros_like(noisy_trajectory)
+            if torch.rand((), device=noisy_trajectory.device) < 0.5:
+                with torch.no_grad():
+                    pre_pred = self.model(
+                        torch.cat([noisy_trajectory, feedback], dim=-1),
+                        timesteps, local_cond=local_cond, global_cond=global_cond)
+                    clean_sample = self._predict_clean_sample(
+                        noisy_trajectory, pre_pred, timesteps)
+                    feedback = self._feedback_from_clean_sample(
+                        clean_sample, noisy_trajectory)
             self._last_self_condition_info = {
                 'feedback_shape': tuple(feedback.shape),
                 'feedback_requires_grad': feedback.requires_grad,
