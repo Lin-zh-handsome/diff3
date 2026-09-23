@@ -1,0 +1,7 @@
+- policy.use_self_condition=true
+- training.device=cuda:0
+- training.seed=42
+- logging.mode=disabled
+- logging.name=wp1_can_sc_only_seed42
+- task.env_runner.n_train_vis=0
+- task.env_runner.n_test_vis=0
