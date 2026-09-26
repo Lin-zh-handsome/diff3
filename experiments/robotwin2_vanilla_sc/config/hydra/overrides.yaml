@@ -1,0 +1,12 @@
+- bench_name=RoboTwin
+- task.name=beat_block_hammer
+- task.shape_meta.action.shape=[14]
+- +task.shape_meta.obs.agent_pos.shape=[14]
+- task.dataset.zarr_path=data/RoboTwin-beat_block_hammer-aloha_agilex-joint.zarr
+- training.debug=False
+- training.seed=42
+- training.device=cuda:0
+- exp_name=beat_block_hammer-robot_dp-train
+- logging.mode=online
+- setting=aloha_agilex
+- policy.use_self_condition=true

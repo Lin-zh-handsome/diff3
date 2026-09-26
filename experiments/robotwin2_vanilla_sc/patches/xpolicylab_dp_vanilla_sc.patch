@@ -1,0 +1,157 @@
+diff --git a/policy/DP/diffusion_policy/config/robot_dp.yaml b/policy/DP/diffusion_policy/config/robot_dp.yaml
+index 45267b9..9e4e082 100644
+--- a/policy/DP/diffusion_policy/config/robot_dp.yaml
++++ b/policy/DP/diffusion_policy/config/robot_dp.yaml
+@@ -54,6 +54,7 @@ policy:
+   n_obs_steps: ${n_obs_steps}
+   num_inference_steps: 100
+   obs_as_global_cond: ${obs_as_global_cond}
++  use_self_condition: true
+   # crop_shape: null
+   diffusion_step_embed_dim: 128
+   # down_dims: [512, 1024, 2048]
+@@ -151,4 +152,4 @@ hydra:
+     dir: data/outputs/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}_${task_name}
+     subdir: ${hydra.job.num}
+ 
+-setting: null
+\ No newline at end of file
++setting: null
+diff --git a/policy/DP/diffusion_policy/model/diffusion/conditional_unet1d.py b/policy/DP/diffusion_policy/model/diffusion/conditional_unet1d.py
+index ea6616e..0e6ba6b 100644
+--- a/policy/DP/diffusion_policy/model/diffusion/conditional_unet1d.py
++++ b/policy/DP/diffusion_policy/model/diffusion/conditional_unet1d.py
+@@ -76,6 +76,7 @@ class ConditionalUnet1D(nn.Module):
+     def __init__(
+         self,
+         input_dim,
++        output_dim=None,
+         local_cond_dim=None,
+         global_cond_dim=None,
+         diffusion_step_embed_dim=256,
+@@ -85,6 +86,8 @@ class ConditionalUnet1D(nn.Module):
+         cond_predict_scale=False,
+     ):
+         super().__init__()
++        if output_dim is None:
++            output_dim = input_dim
+         all_dims = [input_dim] + list(down_dims)
+         start_dim = down_dims[0]
+ 
+@@ -196,7 +199,7 @@ class ConditionalUnet1D(nn.Module):
+ 
+         final_conv = nn.Sequential(
+             Conv1dBlock(start_dim, start_dim, kernel_size=kernel_size),
+-            nn.Conv1d(start_dim, input_dim, 1),
++            nn.Conv1d(start_dim, output_dim, 1),
+         )
+ 
+         self.diffusion_step_encoder = diffusion_step_encoder
+diff --git a/policy/DP/diffusion_policy/policy/diffusion_unet_image_policy.py b/policy/DP/diffusion_policy/policy/diffusion_unet_image_policy.py
+index c93c302..e3554a4 100644
+--- a/policy/DP/diffusion_policy/policy/diffusion_unet_image_policy.py
++++ b/policy/DP/diffusion_policy/policy/diffusion_unet_image_policy.py
+@@ -30,6 +30,7 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
+         kernel_size=5,
+         n_groups=8,
+         cond_predict_scale=True,
++        use_self_condition=False,
+         # parameters passed to step
+         **kwargs,
+     ):
+@@ -49,8 +50,10 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
+             input_dim = action_dim
+             global_cond_dim = obs_feature_dim * n_obs_steps
+ 
++        model_input_dim = input_dim + (action_dim if use_self_condition else 0)
+         model = ConditionalUnet1D(
+-            input_dim=input_dim,
++            input_dim=model_input_dim,
++            output_dim=input_dim,
+             local_cond_dim=None,
+             global_cond_dim=global_cond_dim,
+             diffusion_step_embed_dim=diffusion_step_embed_dim,
+@@ -77,6 +80,7 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
+         self.n_action_steps = n_action_steps
+         self.n_obs_steps = n_obs_steps
+         self.obs_as_global_cond = obs_as_global_cond
++        self.use_self_condition = use_self_condition
+         self.kwargs = kwargs
+ 
+         if num_inference_steps is None:
+@@ -107,12 +111,32 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
+         # set step values
+         scheduler.set_timesteps(self.num_inference_steps)
+ 
++        feedback = None
++        if self.use_self_condition:
++            feedback = torch.zeros(
++                (trajectory.shape[0], trajectory.shape[1], self.action_dim),
++                dtype=trajectory.dtype,
++                device=trajectory.device,
++            )
++
+         for t in scheduler.timesteps:
+             # 1. apply conditioning
+             trajectory[condition_mask] = condition_data[condition_mask]
+ 
+             # 2. predict model output
+-            model_output = model(trajectory, t, local_cond=local_cond, global_cond=global_cond)
++            model_input = torch.cat([trajectory, feedback], dim=-1) if self.use_self_condition else trajectory
++            model_output = model(model_input, t, local_cond=local_cond, global_cond=global_cond)
++
++            if self.use_self_condition:
++                alpha_prod_t = scheduler.alphas_cumprod.to(
++                    device=trajectory.device,
++                    dtype=trajectory.dtype,
++                )[t]
++                clean_action = (
++                    trajectory[..., :self.action_dim]
++                    - (1 - alpha_prod_t).sqrt() * model_output[..., :self.action_dim]
++                ) / alpha_prod_t.sqrt()
++                feedback = clean_action.detach()
+ 
+             # 3. compute previous image: x_t -> x_t-1
+             trajectory = scheduler.step(model_output, t, trajectory, generator=generator, **kwargs).prev_sample
+@@ -240,8 +264,39 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
+         # apply conditioning
+         noisy_trajectory[condition_mask] = cond_data[condition_mask]
+ 
+-        # Predict the noise residual
+-        pred = self.model(noisy_trajectory, timesteps, local_cond=local_cond, global_cond=global_cond)
++        # Predict the noise residual, optionally using same-timestep self-conditioning.
++        if self.use_self_condition:
++            zero_feedback = torch.zeros(
++                (noisy_trajectory.shape[0], noisy_trajectory.shape[1], self.action_dim),
++                dtype=noisy_trajectory.dtype,
++                device=noisy_trajectory.device,
++            )
++            feedback = zero_feedback
++            if torch.rand((), device=noisy_trajectory.device) < 0.5:
++                with torch.no_grad():
++                    first_pred = self.model(
++                        torch.cat([noisy_trajectory, zero_feedback], dim=-1),
++                        timesteps,
++                        local_cond=local_cond,
++                        global_cond=global_cond,
++                    )
++                    alpha_prod = self.noise_scheduler.alphas_cumprod.to(
++                        device=noisy_trajectory.device,
++                        dtype=noisy_trajectory.dtype,
++                    )[timesteps].reshape(bsz, 1, 1)
++                    feedback = (
++                        noisy_trajectory[..., :self.action_dim]
++                        - (1 - alpha_prod).sqrt() * first_pred[..., :self.action_dim]
++                    ) / alpha_prod.sqrt()
++                    feedback = feedback.detach()
++            pred = self.model(
++                torch.cat([noisy_trajectory, feedback], dim=-1),
++                timesteps,
++                local_cond=local_cond,
++                global_cond=global_cond,
++            )
++        else:
++            pred = self.model(noisy_trajectory, timesteps, local_cond=local_cond, global_cond=global_cond)
+ 
+         pred_type = self.noise_scheduler.config.prediction_type
+         if pred_type == "epsilon":
