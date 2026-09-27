@@ -1,0 +1,2 @@
+﻿benchmark,task,policy,dataset,embodiment,demos,seed,epochs,optimization_steps,eval_episodes,success_count,success_rate,skipped_seeds
+RoboTwin 2.0,beat_block_hammer,Official DP + Vanilla Self-Conditioning,demo_clean,Aloha-AgileX,50,42,600,25800,100,19,0.19,33

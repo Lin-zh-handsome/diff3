@@ -1,0 +1,29 @@
+{
+  "benchmark": "RoboTwin 2.0",
+  "task": "beat_block_hammer",
+  "policy": "Official Diffusion Policy with Vanilla Self-Conditioning",
+  "embodiment": "Aloha-AgileX",
+  "training_data": "demo_clean",
+  "evaluation_data": "demo_clean",
+  "demo_count": 50,
+  "seed": 42,
+  "training_epochs": 600,
+  "optimization_steps": 25800,
+  "model_parameter_count": 96822734,
+  "unet_parameter_count": 85646222,
+  "evaluation": {
+    "episodes": 100,
+    "success_count": 19,
+    "success_rate": 0.19,
+    "success_rate_percent": 19.0,
+    "skipped_seeds": 33,
+    "batch_workers": 1,
+    "instruction_type": "seen",
+    "timestamp": "2026-09-27_00-35-30_651382",
+    "summary_file": "eval/2026-09-27_00-35-30_651382/_result.txt"
+  },
+  "resolved_config": "config/resolved_robot_dp.yaml",
+  "wandb_run": null,
+  "checkpoint_files_uploaded": false,
+  "checkpoint_note": "Model checkpoint files were excluded from this publication."
+}

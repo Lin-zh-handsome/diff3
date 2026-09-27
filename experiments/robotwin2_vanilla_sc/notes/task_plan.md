@@ -4,10 +4,10 @@
 Modify the official XPolicyLab DP minimally, train and evaluate `beat_block_hammer` on the official RoboTwin protocol, then run the remaining requested tasks after the first task is complete.
 
 ## Next Step
-Let the official `beat_block_hammer` run finish 600 epochs; then run the official 100-episode evaluation and record `result.json` before advancing to the next task.
+Download and process `demo_clean` for `handover_block`, `stack_bowls_three`, and `pick_dual_bottles`, then train/evaluate each through the official XPolicyLab entry points with seed 42 and the same SC configuration.
 
 ## Current Phase
-Phase 3
+Phase 4
 
 ## Phases
 
@@ -28,17 +28,19 @@ Phase 3
 - [x] Prepare separate p1-local Conda environment with official DP dependencies and fit raw data to the official DP processor path.
 - [x] Run official processing entry point.
 - [x] Launch official training entry point on GPU 0 (Python PID 1855894).
-- [x] Record process, logs, resolved config, and parameter count; checkpoint will be written after the configured 600 epochs.
-- **Status:** in_progress
+- [x] Record process, logs, resolved config, parameter count, and final checkpoint.
+- **Status:** complete
 
 ### Phase 4: Official evaluation and result record
-- [ ] Run demo_clean to demo_clean evaluation for 100 episodes.
-- [ ] Save task, seed, demos, epoch, success count/rate, best/final checkpoint, parameter count under artifacts/robotwin_self_condition/beat_block_hammer/.
-- **Status:** pending
+- [x] Launch official demo_clean evaluation for 100 episodes on GPU 0 (policy) and GPU 1 (simulation).
+- [x] Save task, seed, demos, epoch, success count/rate, best/final checkpoint, parameter count under artifacts/robotwin_self_condition/beat_block_hammer/.
+- [x] Archive/link all 100 official evaluation episode videos and the result summary.
+- **Status:** complete
 
 ### Phase 5: Remaining requested tasks
-- [ ] After Phase 4 is complete, repeat the official process for handover_block, stack_bowls_three, and pick_dual_bottles.
-- **Status:** pending
+- [ ] Repeat the official processing, training, and 100-episode evaluation for handover_block, stack_bowls_three, and pick_dual_bottles.
+- [ ] Record each task's result.json and artifacts.
+- **Status:** in_progress; official data download started (PID 2235502).
 
 ### Phase 6: Delivery
 - [ ] Summarize changed files, method locations, commands, GPU/PIDs, outputs, config, and parameter count.
@@ -61,3 +63,5 @@ Phase 3
 | `h5py 3.16` could not map the archive's HDF5 float type | Installed `h5py 3.10` in the new environment; it reads the official episode without changing source data. |
 | OpenCV and Torch could not consume NumPy arrays after dependency reconciliation | Matched the official DP install's `numpy 1.23.5` and used `opencv-python-headless 4.9.0.80`; OpenCV decoding and Torch NumPy interop now work. |
 | Hydra rejected the official `agent_pos` shape override because the YAML omits that key | Used Hydra's `+task.shape_meta.obs.agent_pos.shape=[14]`, preserving the intended values while adding the dataset's 14-D observation entry. |
+| RoboTwin evaluation lacked official scene assets | Ran official `scripts/_download_assets.sh` with `HF_ENDPOINT=https://hf-mirror.com` and proxy variables unset; downloaded and extracted assets without altering evaluation code. |
+| Evaluation's `toppra 0.6.10` extension was built for NumPy 2 | Built and installed `toppra 0.6.3` against the DP-compatible NumPy 1.23.5 in the isolated environment. |
