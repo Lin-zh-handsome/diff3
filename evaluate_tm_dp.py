@@ -34,13 +34,26 @@ def main():
     workspace = workspace_cls(cfg, output_dir=str(out))
     workspace.load_payload(payload, include_keys=[])
     policy = workspace.ema_model if cfg.training.use_ema else workspace.model
-    policy.to(args.device).eval()
+    device = torch.device(args.device)
+    policy.to(device).eval()
+    is_cuda = device.type == 'cuda'
+    if is_cuda:
+        torch.cuda.synchronize(device)
+        torch.cuda.reset_peak_memory_stats(device)
 
     runner = hydra.utils.instantiate(cfg.task.env_runner, output_dir=str(out))
     try:
         rollout = runner.run(policy)
     finally:
         runner.env.close()
+    if is_cuda:
+        torch.cuda.synchronize(device)
+        rollout_peak_allocated_mib = torch.cuda.max_memory_allocated(device) / 2**20
+        rollout_peak_reserved_mib = torch.cuda.max_memory_reserved(device) / 2**20
+        torch.cuda.empty_cache()
+    else:
+        rollout_peak_allocated_mib = None
+        rollout_peak_reserved_mib = None
     per_seed = {str(seed): float(rollout[f'test/sim_max_reward_{seed}'])
                 for seed in range(200000, 200050)}
     successes = {seed: reward >= 1.0 for seed, reward in per_seed.items()}
@@ -51,7 +64,7 @@ def main():
     visual_times = []
     denoise_times = []
     total_times = []
-    synchronize = lambda: torch.cuda.synchronize(args.device) if torch.cuda.is_available() else None
+    synchronize = lambda: torch.cuda.synchronize(device) if is_cuda else None
     original_encoder = policy.obs_encoder.forward
     original_sampler = policy.conditional_sample
 
@@ -74,13 +87,25 @@ def main():
     policy.obs_encoder.forward = timed_encoder
     policy.conditional_sample = timed_sampler
     with torch.no_grad():
-        for i in range(args.timing_plans + 3):
+        for _ in range(3):
+            policy.predict_action(obs)
+        synchronize()
+        visual_times.clear()
+        denoise_times.clear()
+        if is_cuda:
+            torch.cuda.reset_peak_memory_stats(device)
+        for _ in range(args.timing_plans):
             synchronize()
             start = time.perf_counter()
             policy.predict_action(obs)
             synchronize()
-            if i >= 3:
-                total_times.append((time.perf_counter() - start) * 1000)
+            total_times.append((time.perf_counter() - start) * 1000)
+    if is_cuda:
+        planning_peak_allocated_mib = torch.cuda.max_memory_allocated(device) / 2**20
+        planning_peak_reserved_mib = torch.cuda.max_memory_reserved(device) / 2**20
+    else:
+        planning_peak_allocated_mib = None
+        planning_peak_reserved_mib = None
     policy.obs_encoder.forward = original_encoder
     policy.conditional_sample = original_sampler
     result = {
@@ -93,11 +118,13 @@ def main():
         'mean_max_reward': float(np.mean(list(per_seed.values()))),
         'per_seed_max_reward': per_seed,
         'planning_latency_ms_mean': float(np.mean(total_times)),
-        'visual_encoding_ms_mean': float(np.mean(visual_times[3:])),
-        'diffusion_denoising_ms_mean': float(np.mean(denoise_times[3:])),
+        'visual_encoding_ms_mean': float(np.mean(visual_times)),
+        'diffusion_denoising_ms_mean': float(np.mean(denoise_times)),
         'parameter_count': sum(p.numel() for p in policy.parameters()),
-        'gpu_peak_allocated_mib': torch.cuda.max_memory_allocated(args.device) / 2**20,
-        'gpu_peak_reserved_mib': torch.cuda.max_memory_reserved(args.device) / 2**20,
+        'rollout_peak_allocated_mib': rollout_peak_allocated_mib,
+        'rollout_peak_reserved_mib': rollout_peak_reserved_mib,
+        'single_plan_peak_allocated_mib': planning_peak_allocated_mib,
+        'single_plan_peak_reserved_mib': planning_peak_reserved_mib,
         'timing_batch_size': 1,
         'timing_plans': args.timing_plans,
         'device': str(args.device),

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd /home/hanjinwei/p1/project/thesis-ch3-tm-dp
+mkdir -p data/outputs/tm_dp
 GPU="${1:-0}"
 case "$GPU" in 0|1) ;; *) echo "Choose physical GPU 0 or 1" >&2; exit 2 ;; esac
 PYTHON=/home/hanjinwei/miniconda3/envs/robodiff/bin/python
@@ -9,12 +10,36 @@ is_complete() {
   "$PYTHON" - "$1" <<'PY'
 import json, sys
 from pathlib import Path
+import dill
+import torch
+
 mode = sys.argv[1]
-p = Path(f'data/outputs/tm_dp/{mode}/logs.json.txt')
-if not p.exists():
+run_dir = Path(f'data/outputs/tm_dp/{mode}')
+log = run_dir / 'logs.json.txt'
+if not log.exists():
     raise SystemExit(1)
-lines = [json.loads(x) for x in p.read_text().splitlines() if x.strip()]
-raise SystemExit(0 if lines and lines[-1].get('epoch') == 3049 else 1)
+last = None
+with log.open() as stream:
+    for line in stream:
+        if line.strip():
+            try:
+                last = json.loads(line)
+            except json.JSONDecodeError:
+                # JsonLogger truncates an interrupted final line on resume.
+                raise SystemExit(1 if not line.endswith('\n') else 2)
+if not last or last.get('epoch') != 3049:
+    raise SystemExit(1)
+checkpoint = run_dir / 'checkpoints' / 'latest.ckpt'
+if not checkpoint.is_file():
+    print(f'{mode}: final log exists, but latest checkpoint is missing', file=sys.stderr)
+    raise SystemExit(2)
+try:
+    payload = torch.load(checkpoint, map_location='cpu', pickle_module=dill)
+    if not payload.get('state_dicts', {}).get('model') or 'cfg' not in payload:
+        raise ValueError('checkpoint lacks model state or config')
+except Exception as exc:
+    print(f'{mode}: latest checkpoint cannot be loaded: {exc}', file=sys.stderr)
+    raise SystemExit(2)
 PY
 }
 
@@ -22,6 +47,9 @@ PY
 for mode in vanilla tsm me full; do
   if is_complete "$mode"; then
     continue
+  else
+    status=$?
+    if (( status != 1 )); then exit "$status"; fi
   fi
   bash run_tm_dp.sh "$mode" "$GPU" >> "data/outputs/tm_dp/${mode}_train.log" 2>&1
   is_complete "$mode"

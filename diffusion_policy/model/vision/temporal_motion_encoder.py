@@ -40,7 +40,8 @@ class MotionExcitation2d(nn.Module):
 
     A previous-frame depthwise spatial transform is compared against the current
     reduced feature. The first frame has a zero motion descriptor. The expand
-    projection is zero initialized, so the block starts as an identity.
+    projection is zero initialized, so the block starts as an identity. The
+    first frame stays an identity even after the projection bias is trained.
     """
     def __init__(self, channels: int, n_obs_steps: int, reduction: int = 16):
         super().__init__()
@@ -67,7 +68,12 @@ class MotionExcitation2d(nn.Module):
         diff[:, 1:] = zt[:, 1:] - prev.reshape(bt // t, t - 1, z.shape[1], h, w)
         pooled = diff.reshape(bt, z.shape[1], h, w).mean(dim=(-2, -1), keepdim=True)
         excitation = 2.0 * torch.sigmoid(self.expand(pooled)) - 1.0
-        return x * (1.0 + excitation)
+        # The first frame has no preceding observation. Mask after expand so a
+        # learned expand.bias cannot excite that invalid motion descriptor.
+        valid = torch.ones((bt // t, t, 1, 1, 1), device=x.device, dtype=x.dtype)
+        valid[:, 0] = 0
+        excitation = excitation.reshape(bt // t, t, channels, 1, 1) * valid
+        return x * (1.0 + excitation.reshape(bt, channels, 1, 1))
 
 
 class TemporalBasicBlock(nn.Module):
@@ -154,17 +160,20 @@ class TemporalMotionObsEncoder(nn.Module):
     """Compatible observation encoder wrapper returning flattened [B*To,D]."""
     def __init__(self, obs_encoder: nn.Module, n_obs_steps: int, feature_dim: int,
                  use_tsm: bool, use_motion_excitation: bool,
-                 tsm_channels=(128, 256), me_channels=(256,), fold_div=8):
+                 tsm_channels=(128, 256), me_channels=(256,), fold_div=8,
+                 use_motion_condition_fusion=None):
         super().__init__()
         if n_obs_steps < 2:
             raise ValueError("TM-DP requires n_obs_steps >= 2")
         self.encoder = obs_encoder
         self.n_obs_steps = n_obs_steps
+        if use_motion_condition_fusion is None:
+            use_motion_condition_fusion = use_motion_excitation
         self.installed_blocks = install_temporal_blocks(
             self.encoder, n_obs_steps, use_tsm, use_motion_excitation,
             tsm_channels, me_channels, fold_div)
         self.motion_condition = (MotionConditionFusion(feature_dim)
-                                 if use_motion_excitation else None)
+                                 if use_motion_condition_fusion else None)
 
     def forward(self, obs_dict):
         feat = self.encoder(obs_dict)
