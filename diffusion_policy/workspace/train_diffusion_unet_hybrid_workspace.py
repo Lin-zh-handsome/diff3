@@ -67,6 +67,9 @@ class TrainDiffusionUnetHybridWorkspace(BaseWorkspace):
             if lastest_ckpt_path.is_file():
                 print(f"Resuming from checkpoint {lastest_ckpt_path}")
                 self.load_checkpoint(path=lastest_ckpt_path)
+                # Checkpoints are saved after an epoch, before these counters advance.
+                self.epoch += 1
+                self.global_step += 1
 
         # configure dataset
         dataset: BaseImageDataset
@@ -150,7 +153,7 @@ class TrainDiffusionUnetHybridWorkspace(BaseWorkspace):
         # training loop
         log_path = os.path.join(self.output_dir, 'logs.json.txt')
         with JsonLogger(log_path) as json_logger:
-            for local_epoch_idx in range(cfg.training.num_epochs):
+            for local_epoch_idx in range(self.epoch, cfg.training.num_epochs):
                 step_log = dict()
                 # ========= train for this epoch ==========
                 train_losses = list()

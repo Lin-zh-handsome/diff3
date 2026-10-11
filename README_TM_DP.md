@@ -24,7 +24,7 @@ bash run_tm_dp.sh full 0
 
 The four commands share the base CNN-DP configuration: seed 42, batch size 64, 3050 epochs, learning rate 1e-4, EMA, 90 demonstration episodes, and Push-T Image. W&B logs stay offline. Each mode writes its Hydra config, training log, `latest.ckpt`, and rollout-score-ranked checkpoints under `data/outputs/tm_dp/<mode>/`. The launcher log is `data/outputs/tm_dp/<mode>_train.log`.
 
-Vanilla trains on GPU 0. When GPU 1 became available, TSM was launched there in parallel. `run_tm_dp_queue.sh <vanilla-main-pid> <tsm-main-pid>` starts ME and full on GPU 0 after Vanilla finishes, waits for TSM, then runs the independent evaluations. The queue stops if any training run fails.
+Training is currently stopped at the user's request. For any future resume, use only one physical GPU and run every training and evaluation job sequentially. `bash run_tm_dp_queue.sh 0` uses physical GPU 0 for all four modes; replace `0` with `1` only if that card is selected. The launcher masks all other GPUs from each process. Existing `latest.ckpt` files are used to resume partial runs, and the workspace stops at the common 3050-epoch budget. Do not launch this queue until the user explicitly asks to resume.
 
 ## Independent evaluation
 

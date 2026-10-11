@@ -16,7 +16,7 @@ esac
 
 # No random per-frame crops: preserves spatial correspondence for motion delta.
 # Keep this setting identical in all four arms, including vanilla.
-exec /home/hanjinwei/miniconda3/envs/robodiff/bin/python train.py \
+exec env CUDA_VISIBLE_DEVICES="$GPU" /home/hanjinwei/miniconda3/envs/robodiff/bin/python train.py \
   --config-name=train_diffusion_unet_hybrid_workspace \
   task=pusht_image \
   policy._target_=diffusion_policy.policy.tm_diffusion_unet_hybrid_image_policy.TMDiffusionUnetHybridImagePolicy \
@@ -24,7 +24,7 @@ exec /home/hanjinwei/miniconda3/envs/robodiff/bin/python train.py \
   +policy.use_motion_excitation="$ME" \
   policy.crop_shape=null \
   n_obs_steps=2 \
-  training.device="cuda:${GPU}" \
+  training.device="cuda:0" \
   training.seed=42 \
   exp_name="tm_dp_${MODE}" \
   logging.mode=offline \
